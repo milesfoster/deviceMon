@@ -368,6 +368,7 @@ class DeviceMonitor:
         ports = ['1 - 12']
         formattedPorts = []
         self.updateList(ports, formattedPorts)
+        totalQsfpList = []
         qsfpList = []
 
         for port in formattedPorts:
@@ -384,14 +385,18 @@ class DeviceMonitor:
             else:
               if(result['value']):
                 if 'unknown' in result['value']:
+                  _instance = (result["id"].split(".")[1])
+                  _instance = int(_instance.split("@")[0])
+                  totalQsfpList.append(_instance)
                   continue
 
                 else:
-                    _instance = (result["id"].split(".")[1])
-                    _instance = int(_instance.split("@")[0])
-                    qsfpList.append(_instance)
+                   _instance = (result["id"].split(".")[1])
+                   _instance = int(_instance.split("@")[0])
+                   qsfpList.append(_instance)
+                   totalQsfpList.append(_instance)
 
-        return qsfpList
+        return qsfpList, totalQsfpList
 
 
     def checkChannels(self, host, qsfpList):
@@ -412,6 +417,7 @@ class DeviceMonitor:
         else:
 
           for result in results['result']['parameters']:
+              print(lastPort + 1)
               if 'error' in result:
                if "Failed to retrieve data." in result['error']['message']:
                  return False
@@ -495,62 +501,70 @@ class DeviceMonitor:
         for type in self.types:
 
             if type == "qsfp":
-                qsfpList = self.checkQSFP(host)
-                params = {
-                    'type': 'qsfp',
-                    'qsfpList': qsfpList
-                }
+                qsfpList, totalQsfpList = self.checkQSFP(host)
+                if qsfpList:
+                    params = {
+                        'type': 'qsfp',
+                        'qsfpList': qsfpList
+                    }
+                    print(qsfpList, 'qsfpList')
+                    print(totalQsfpList, 'totalqsfplist')
+                    
 
-                self.updateParameters(**params)
 
-                qsfp = host_instance[host]['qsfp']
+                    self.updateParameters(**params)
 
-                results = self.fetch(host, self.parameters)
+                    qsfp = host_instance[host]['qsfp']
 
-                
-                try:
-                    activePorts = []
+                    results = self.fetch(host, self.parameters)
 
-                    for result in results["result"]["parameters"]:
-                        key = result["name"]
+                    
+                    try:
+                        activePorts = []
 
-                        # separate "240.1@i" to "1" or 301.2.0@i to "2"
-                        _instance = result["id"].split(".")[1]
+                        for result in results["result"]["parameters"]:
+                            key = result["name"]
 
-                        _instance = _instance.split("@")[0]
+                            # separate "240.1@i" to "1" or 301.2.0@i to "2"
+                            _instance = result["id"].split(".")[1]
 
-                        if "partNum" in result["name"] and len(result["value"]) != 0:
-                            result["value"] = result["value"].rstrip()
-                            activePorts.append(_instance)
+                            _instance = _instance.split("@")[0]
 
-                        if _instance in activePorts:
+                            if "partNum" in result["name"] and len(result["value"]) != 0:
+                                result["value"] = result["value"].rstrip()
+                                activePorts.append(_instance)
 
-                            if "Power" in result["name"]:
-                                result["value"] = result["value"] / 100
+                            if _instance in activePorts:
 
-                            _instance = int(_instance) + 1
-                            
-                            if _instance not in qsfp.keys():
+                                if "Power" in result["name"]:
+                                    result["value"] = result["value"] / 100
 
-                                qsfp.update(
-                                    {
-                                        _instance:
-                                            {
-                                            key: result["value"],
-                                            "i_port": _instance,
-                                            }
-                                    }
-                                )
-                            
-                            else:
-                                qsfp[_instance].update({key: result["value"]})
+                                _instance = int(_instance) + 1
+                                
+                                if _instance not in qsfp.keys():
 
-                except Exception as e:
-                    print(e)
+                                    qsfp.update(
+                                        {
+                                            _instance:
+                                                {
+                                                key: result["value"],
+                                                "i_port": _instance,
+                                                }
+                                        }
+                                    )
+                                
+                                else:
+                                    qsfp[_instance].update({key: result["value"]})
+
+                    except Exception as e:
+                        print(e)
+                else:
+                    break
+                    
 
             if type == "dataport":
 
-                bChannels = self.checkChannels(host, qsfpList)
+                bChannels = self.checkChannels(host, totalQsfpList)
                 channelNames = []
                 activeChannels = []
                 if bChannels:
@@ -589,7 +603,6 @@ class DeviceMonitor:
 
                 try:
                     for result in results["result"]["parameters"]:
-                        print(result)
                         key = result["name"]
 
                         # separate "240.1@i" to "1" or 301.2.0@i to "2"
@@ -681,100 +694,104 @@ class DeviceMonitor:
                     print(e)
 
                 if bEnabledVideosChecked:
+                    if enabledSDI:
 
-                    params = {
-                        'type': 'ipInputVideo',
-                        'bEnabledVideosChecked': bEnabledVideosChecked,
-                        'bChannels': bChannels,
-                        'enabledSDI': enabledSDI,
-                    }
+                        params = {
+                            'type': 'ipInputVideo',
+                            'bEnabledVideosChecked': bEnabledVideosChecked,
+                            'bChannels': bChannels,
+                            'enabledSDI': enabledSDI,
+                        }
 
-                    self.updateParameters(**params)
-                    ipInputVideoResults = self.fetch(host, self.parameters)
+                        self.updateParameters(**params)
+                        ipInputVideoResults = self.fetch(host, self.parameters)
 
-                    try:
+                        try:
 
-                        if self.deviceType == "evIPG":
-                            prefix = "s_qsfp"
-                            
-                        elif self.deviceType == "570ipg":
-                            prefix = "s_sfp"
+                            if self.deviceType == "evIPG":
+                                prefix = "s_qsfp"
+                                
+                            elif self.deviceType == "570ipg":
+                                prefix = "s_sfp"
 
-                        for result in ipInputVideoResults["result"]["parameters"]:
-                            print(result)
+                            for result in ipInputVideoResults["result"]["parameters"]:
 
-                            key = result["name"]
+                                key = result["name"]
 
-                            if "video_enabled" in result["name"]:
-                                result["value"] = self.videoEnabledStatusLookup[result["value"]]
+                                if "video_enabled" in result["name"]:
+                                    result["value"] = self.videoEnabledStatusLookup[result["value"]]
 
-                            if "input_presence" in result["name"]:
-                                result["value"] = self.inputPresenceStatusLookup[result["value"]]
+                                if "input_presence" in result["name"]:
+                                    result["value"] = self.inputPresenceStatusLookup[result["value"]]
 
-                            if "rtp_present" in result["name"]:
-                                result["value"] = self.rtpPresenceStatusLookup[result["value"]]
+                                if "rtp_present" in result["name"]:
+                                    result["value"] = self.rtpPresenceStatusLookup[result["value"]]
 
-                            sdi_id = result["id"].split(".")[1]
-                            qsfp_id = result["id"].split(".")[2]
+                                sdi_id = result["id"].split(".")[1]
+                                qsfp_id = result["id"].split(".")[2]
 
-                            sdi_instance = _sdi_prefix + (str(int(sdi_id) + 1))
-                            qsfp_instance = int(qsfp_id.split("@")[0]) + 1
-
+                                sdi_instance = _sdi_prefix + (str(int(sdi_id) + 1))
+                                qsfp_instance = int(qsfp_id.split("@")[0]) + 1
 
 
-                            if sdi_instance not in ipInputVideo.keys():
 
-                                ipInputVideo.update(
-                                    {
-                                        sdi_instance: {}
-                                    }
-                                )
+                                if sdi_instance not in ipInputVideo.keys():
 
-                            if bChannels:
-                                sdi_id = int(sdi_id) + 1
-
-                                match sdi_id:
-
-                                    case sdi_id if sdi_id in range(1, 9):
-                                        channel = 1
-                                        channel_qsfp_instance = f'{qsfp_instance}.{channel}'
-                                        
-                                    case sdi_id if sdi_id in range(9, 17):
-                                        qsfp_instance-=2
-                                        channel = 2
-                                        channel_qsfp_instance = f'.{qsfp_instance}.{channel}'
-                                    
-                                    case sdi_id if sdi_id in range(17, 25):
-                                        qsfp_instance-=4
-                                        channel = 3
-                                        channel_qsfp_instance = f'{qsfp_instance}.{channel}'
-
-                                    case sdi_id if sdi_id in range(25, 33):
-                                        qsfp_instance-=6
-                                        channel = 4
-                                        channel_qsfp_instance = f'{qsfp_instance}.{channel}' 
-
-                            else:
-                                channel_qsfp_instance = qsfp_instance   
-
-                            if qsfp_instance not in ipInputVideo[sdi_instance].keys():
-
-                                ipInputVideo[sdi_instance].update(
-                                    {
-                                        qsfp_instance: {
-                                            key: result["value"],
-                                            "s_sdi": sdi_instance,
-                                            prefix: channel_qsfp_instance
+                                    ipInputVideo.update(
+                                        {
+                                            sdi_instance: {}
                                         }
-                                    }
-                                )
+                                    )
 
-                            else:
+                                if bChannels:
+                                    sdi_id = int(sdi_id) + 1
 
-                                ipInputVideo[sdi_instance][qsfp_instance].update({key: result["value"]})
-                                    
-                    except Exception as e:
-                        print(e)
+                                    match sdi_id:
+
+                                        case sdi_id if sdi_id in range(1, 9):
+                                            channel = 1
+                                            channel_qsfp_instance = f'{qsfp_instance}.{channel}'
+                                            
+                                        case sdi_id if sdi_id in range(9, 17):
+                                            qsfp_instance-=2
+                                            channel = 2
+                                            channel_qsfp_instance = f'.{qsfp_instance}.{channel}'
+                                        
+                                        case sdi_id if sdi_id in range(17, 25):
+                                            qsfp_instance-=4
+                                            channel = 3
+                                            channel_qsfp_instance = f'{qsfp_instance}.{channel}'
+
+                                        case sdi_id if sdi_id in range(25, 33):
+                                            qsfp_instance-=6
+                                            channel = 4
+                                            channel_qsfp_instance = f'{qsfp_instance}.{channel}' 
+
+                                else:
+                                    channel_qsfp_instance = qsfp_instance   
+
+                                if qsfp_instance not in ipInputVideo[sdi_instance].keys():
+
+                                    ipInputVideo[sdi_instance].update(
+                                        {
+                                            qsfp_instance: {
+                                                key: result["value"],
+                                                "s_sdi": sdi_instance,
+                                                prefix: channel_qsfp_instance
+                                            }
+                                        }
+                                    )
+
+                                else:
+
+                                    ipInputVideo[sdi_instance][qsfp_instance].update({key: result["value"]})
+                                        
+                        except Exception as e:
+                            print(e)
+                            
+                    else:
+                        continue
+
 
         collection.update(host_instance)
 
@@ -796,7 +813,7 @@ class DeviceMonitor:
 
 def main():
 
-    params = {"hosts": ["10.193.79.126"], 
+    params = {"hosts": ["10.193.67.22", "10.193.77.126"], 
               "deviceType": "evIPG",
               "types": ["qsfp", "dataport", "ipInputVideo"],
     }
