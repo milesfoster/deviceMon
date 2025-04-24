@@ -755,7 +755,7 @@ class DeviceMonitor:
                                         case sdi_id if sdi_id in range(9, 17):
                                             qsfp_instance-=2
                                             channel = 2
-                                            channel_qsfp_instance = f'.{qsfp_instance}.{channel}'
+                                            channel_qsfp_instance = f'{qsfp_instance}.{channel}'
                                         
                                         case sdi_id if sdi_id in range(17, 25):
                                             qsfp_instance-=4
